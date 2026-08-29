@@ -34,6 +34,11 @@ COPY --from=construction /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=construction /app/dist ./dist
 COPY prisma ./prisma
 COPY codex.graphql ./
+# Le code source aussi : la graine (prisma/seed.ts) importe src/domain/badges,
+# et elle tourne DANS cette image au premier démarrage (docker-compose.yml).
+# Sans ce calque, le conteneur boucle sur ERR_MODULE_NOT_FOUND avant même
+# de servir la première requête. Vécu en déployant la préprod.
+COPY src ./src
 
 EXPOSE 3000
 CMD ["node", "dist/server.js"]
