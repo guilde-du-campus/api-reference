@@ -1,0 +1,49 @@
+# =============================================================================
+# La Guilde · Environnement complet en une commande : docker compose up
+# -----------------------------------------------------------------------------
+# Deux services : la base PostgreSQL et l'API. Au premier démarrage, l'API
+# applique les migrations puis plante la graine de démonstration.
+# =============================================================================
+
+services:
+  base:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: guilde
+      POSTGRES_PASSWORD: guilde
+      POSTGRES_DB: guilde
+    volumes:
+      # Les données survivent aux redémarrages du conteneur.
+      - donnees-guilde:/var/lib/postgresql/data
+    healthcheck:
+      # L'API n'a pas le droit de démarrer avant que la base réponde.
+      test: ["CMD-SHELL", "pg_isready -U guilde -d guilde"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    depends_on:
+      base:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://guilde:guilde@base:5432/guilde
+      JWT_SECRET: change-moi-en-production-vraiment
+      ALLOWED_ORIGINS: http://localhost:3001
+      PUBLIC_URL: http://localhost:3000
+      MEDIA_DIR: /app/media
+    ports:
+      - "3000:3000"
+    volumes:
+      - media-guilde:/app/media
+    # Migrations, graine, puis serveur : l'ordre qui fait qu'au premier
+    # `up`, tout existe et la démo est peuplée.
+    command: >
+      sh -c "npx prisma migrate deploy
+      && npx tsx prisma/seed.ts
+      && node dist/server.js"
+
+volumes:
+  donnees-guilde:
+  media-guilde:

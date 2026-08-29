@@ -1,0 +1,146 @@
+// =============================================================================
+// La Guilde · Schéma de base de données
+// -----------------------------------------------------------------------------
+// Ce schéma implémente le diagramme de classes du contrat
+// (contrat/diagrammes/classes-domaine.mmd). À noter :
+//  · le niveau et le titre honorifique ne sont PAS stockés : ils se calculent
+//    depuis l'XP (voir src/domain/progression.ts). Donnée dérivée = calcul.
+//  · le solde `helpPoints` est le solde DISPONIBLE : les récompenses des
+//    quêtes ouvertes sont déjà déduites (principe du séquestre).
+// Convention : le code est en anglais, les commentaires en français.
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // PostgreSQL en local comme en production : jamais une base différente
+  // entre le développement et la prod, c'est une leçon du module.
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Le rôle conditionne les autorisations (RBAC) : un simple enum suffit
+// pour deux rôles, pas besoin d'une table de permissions en v1.
+enum Role {
+  MEMBER
+  GUILD_MASTER
+}
+
+enum QuestType {
+  HELP
+  BARTER
+}
+
+enum QuestCategory {
+  DEV
+  DESIGN
+  COURSES
+  MATERIAL
+  STUDENT_LIFE
+  OTHER
+}
+
+// Le cycle de vie complet est décrit dans le contrat. Les transitions
+// autorisées sont gardées par le domaine (src/domain/lifecycle.ts),
+// jamais par le client.
+enum QuestStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  VALIDATED
+  CANCELLED
+}
+
+model Adventurer {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  email        String   @unique
+  // Haché avec argon2id. Jamais en clair, jamais renvoyé par l'API.
+  passwordHash String
+  avatarUrl    String?
+  // L'XP ne descend jamais. Le niveau se calcule, il n'est pas stocké.
+  xp           Int      @default(0)
+  // Solde disponible. Chaque aventurier démarre avec 100 points de bienvenue.
+  helpPoints   Int      @default(100)
+  role         Role     @default(MEMBER)
+  memberSince  DateTime @default(now())
+
+  postedQuests  Quest[]        @relation("author")
+  takenQuests   Quest[]        @relation("taker")
+  badges        BadgeAward[]
+  refreshTokens RefreshToken[]
+}
+
+model Quest {
+  id          String        @id @default(uuid())
+  title       String
+  description String
+  type        QuestType
+  category    QuestCategory
+  status      QuestStatus   @default(OPEN)
+  // La récompense en points d'entraide, sous séquestre de la création
+  // à la validation (ou au remboursement).
+  reward      Int
+  photoUrl    String?
+
+  author   Adventurer  @relation("author", fields: [authorId], references: [id])
+  authorId String
+  taker    Adventurer? @relation("taker", fields: [takerId], references: [id])
+  takerId  String?
+
+  // Les dates jalonnent le cycle de vie : createdAt <= takenAt <=
+  // completedAt <= validatedAt. C'est l'invariant n°2 du modèle de données.
+  createdAt   DateTime  @default(now())
+  takenAt     DateTime?
+  completedAt DateTime?
+  validatedAt DateTime?
+
+  // Le tableau des quêtes filtre massivement sur le statut : un index s'impose.
+  @@index([status, createdAt])
+  @@index([authorId])
+  @@index([takerId])
+}
+
+model Badge {
+  // Le code est l'identifiant naturel : FIRST_QUEST, BIG_HEART...
+  // Le nom affiché (name), lui, est en français : c'est du contenu.
+  code        String  @id
+  name        String
+  description String
+  icon        String
+  // true = attribué par les règles du domaine, false = à la main du maître.
+  automatic   Boolean @default(true)
+
+  awards BadgeAward[]
+}
+
+// Table de liaison aventurier <-> badge, avec la date d'obtention.
+// La contrainte d'unicité implémente l'invariant n°5 : un badge donné
+// ne s'obtient qu'une fois.
+model BadgeAward {
+  adventurer   Adventurer @relation(fields: [adventurerId], references: [id])
+  adventurerId String
+  badge        Badge      @relation(fields: [badgeCode], references: [code])
+  badgeCode    String
+  awardedAt    DateTime   @default(now())
+
+  @@id([adventurerId, badgeCode])
+}
+
+// Les jetons de rafraîchissement sont stockés hachés (SHA-256) pour la
+// rotation et la révocation : un jeton volé en base ne sert à rien.
+model RefreshToken {
+  id           String     @id @default(uuid())
+  tokenHash    String     @unique
+  adventurer   Adventurer @relation(fields: [adventurerId], references: [id])
+  adventurerId String
+  expiresAt    DateTime
+  // Un jeton utilisé est marqué, pas supprimé : réutiliser un jeton déjà
+  // consommé est un signal d'attaque (détection de rejeu).
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([adventurerId])
+}

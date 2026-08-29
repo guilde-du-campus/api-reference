@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    /* Cible Node 22 : ES2022 est entièrement supporté. */
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    /* Le mode strict n'est pas négociable : c'est lui qui fait travailler
+       TypeScript pour nous. Tout le module front insiste là-dessus. */
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "sourceMap": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

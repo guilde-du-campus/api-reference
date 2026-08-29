@@ -1,0 +1,126 @@
+# =============================================================================
+# La Guilde · Le Codex (GraphQL, lecture seule)
+# -----------------------------------------------------------------------------
+# Le Codex expose la consultation de la Guilde en GraphQL, en parallèle du
+# REST. Même domaine, deux paradigmes : c'est le support du comparatif
+# REST / GraphQL des deux modules. Aucune mutation : tout ce qui écrit
+# passe par le REST, qui porte les règles du cycle de vie.
+#
+# Point d'entrée : POST /v1/codex
+# Authentification : le même jeton JWT que le REST, en-tête Authorization.
+# Les requêtes sont limitées à une profondeur de 6 (protection anti-abus,
+# étudiée en séance 4 du module back).
+# =============================================================================
+
+"""Un membre de la Guilde, tel que tout le monde peut le voir."""
+type Adventurer {
+  id: ID!
+  username: String!
+  avatarUrl: String
+  level: Int!
+  xp: Int!
+  "Titre dérivé du niveau, affiché en français : Novice, Compagnon, Expert..."
+  honoraryTitle: String!
+  "Nombre de quêtes réalisées et validées en tant que preneur"
+  validatedQuestsCount: Int!
+  memberSince: String!
+  badges: [AwardedBadge!]!
+  "Les quêtes postées par cet aventurier"
+  postedQuests(status: QuestStatus): [Quest!]!
+  "Les quêtes prises par cet aventurier"
+  takenQuests(status: QuestStatus): [Quest!]!
+}
+
+"""Une demande d'entraide ou un troc, postée au tableau de la Guilde."""
+type Quest {
+  id: ID!
+  title: String!
+  description: String!
+  type: QuestType!
+  category: QuestCategory!
+  status: QuestStatus!
+  "Récompense en points d'entraide, sous séquestre jusqu'à la validation"
+  reward: Int!
+  photoUrl: String
+  author: Adventurer!
+  "null tant que personne n'a pris la quête"
+  taker: Adventurer
+  createdAt: String!
+  takenAt: String
+  completedAt: String
+  validatedAt: String
+}
+
+"""Une distinction, automatique ou décernée par le maître de guilde."""
+type Badge {
+  "Identifiant technique en anglais, stable"
+  code: ID!
+  "Nom affiché, en français"
+  name: String!
+  description: String!
+  icon: String!
+  automatic: Boolean!
+  "Combien d'aventuriers le possèdent (matière à DataLoader...)"
+  holdersCount: Int!
+}
+
+"""Un badge tel qu'il apparaît sur un profil, avec sa date d'obtention."""
+type AwardedBadge {
+  badge: Badge!
+  awardedAt: String!
+}
+
+enum QuestType {
+  HELP
+  BARTER
+}
+
+enum QuestCategory {
+  DEV
+  DESIGN
+  COURSES
+  MATERIAL
+  STUDENT_LIFE
+  OTHER
+}
+
+enum QuestStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  VALIDATED
+  CANCELLED
+}
+
+"""Page de résultats : la pagination du Codex reprend celle du REST."""
+type QuestPage {
+  data: [Quest!]!
+  page: Int!
+  limit: Int!
+  total: Int!
+  totalPages: Int!
+}
+
+type Query {
+  "Le tableau des quêtes, avec les mêmes filtres que le REST"
+  quests(
+    page: Int = 1
+    limit: Int = 20
+    status: QuestStatus
+    type: QuestType
+    category: QuestCategory
+    q: String
+  ): QuestPage!
+
+  "Une quête par son identifiant"
+  quest(id: ID!): Quest
+
+  "Un aventurier par son identifiant"
+  adventurer(id: ID!): Adventurer
+
+  "Le livre des badges"
+  badges: [Badge!]!
+
+  "Mon propre profil (jeton obligatoire)"
+  me: Adventurer
+}
